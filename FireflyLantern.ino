@@ -17,27 +17,99 @@ CRGBPalette16 currentPalette;
 
 int brightness = 255;
 
-#define NFF 8  // number of fireflies
-float RATE = 5;  // average number events per second
+#define NFF 10  // number of fireflies
+float RATE = 1;  // average number events per second
 
+// ******************************************************************
+// create Firefly objects
 
-/*
-#define INIT_FALLTIME 1000
-#define INIT_HUE 43 // of 256, yellowish
-#define INIT_BRIGHT 128  // of 256, mid level brightness
-#define INIT_SATURATION 200  // of 256
+#define INIT_DURATION 400
+#define INIT_HUE 55 // of 256, yellowish
+#define INIT_SATURATION 255  // of 256
+#define INIT_BRIGHT 255  // of 256, mid level brightness
 
 typedef struct Firefly {
   int index;
-  uint8_t fullbright = 255;
-  int starttime = 0; // in ms
-  int duration = 1500; // in ms
   uint8_t hue;
+  uint8_t sat;
+  uint8_t bright;
+  uint8_t fullbright;
+  long int starttime; // in ms
+  int interval;  // poisson interval betweeen events, random process
+  int elapsedt;  // time since starttime
+  int duration; // time to decay to black, in ms
 } Firefly;
 
+Firefly ff[NFF];
+// Firefly ff = malloc(sizeof(Firefly*) * NFF)
 
-Firefly firefly[NFF];
+void initFireflies(Firefly *f) {
+  for(int i=0; i < NFF; i++) {
+    f[i].index = random16(NUM_LEDS); // choose which pixel to start at
+    f[i].fullbright = INIT_BRIGHT;
+    f[i].bright = 0;
+    f[i].hue = INIT_HUE;
+    f[i].sat = INIT_SATURATION;
+    f[i].starttime = millis();
+    f[i].interval = poissonInterval(RATE) * 1000;
+    f[i].elapsedt = 0;
+    f[i].duration = INIT_DURATION;
+  }
+}
+
+void updateFireflies() {
+  for(int i=0; i<NFF; i++) {
+    // light the pixel if we've reached the interval
+    if (ff[i].elapsedt > ff[i].interval) {
+      printFFState(ff[i]);
+
+      // set initial state on trigger 
+      ff[i].hue = random16(10, 80);
+      leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].fullbright);
+
+      // reset values for the next start
+      ff[i].bright = ff[i].fullbright;
+      ff[i].interval = poissonInterval(RATE) * 1000;
+      ff[i].elapsedt = 0;
+      ff[i].starttime = millis();
+    }
+    else if ( ff[i].elapsedt > ff[i].duration) {
+      ff[i].index = random16(NUM_LEDS);
+      ff[i].interval = poissonInterval(RATE) * 1000;
+      ff[i].elapsedt = 0;
+      ff[i].starttime = millis();
+    }
+    else {
+      ff[i].elapsedt = millis() - ff[i].starttime;
+
+      leds[ff[i].index].fadeToBlackBy(256 * (ff[i].elapsedt / ff[i].duration) );
+    }
+
+
+  }
+/*
+// to update interval (from Dan Garcia)
+// you’d need to keep the “full” value of the pixel stored somewhere (so that you aren’t
+//  unscaling to try to get the scaling right for any given frame) - and for a given pixel, 
+//  record a start time (when it was full) and end time (when it should be black) - then you
+//  can get the total time and elapsed time for a given pixel - (256 * elapsed/total) gives
+//   you a value to use for fadeToBlackBy against the full value of the pixel.
 */
+}
+
+void printFFState(Firefly f) {
+  Serial.print("i: ");
+  Serial.print(f.index);
+  Serial.print(" intvl: ");
+  Serial.print(f.interval);
+  Serial.print(" dt: ");
+  Serial.print(f.elapsedt);
+  Serial.print("\n");
+
+}
+
+// ******************************************************************
+// create poisson interval
 
 // return float between 0 and 1, innclusive
 float randf() {
@@ -52,10 +124,11 @@ float randf() {
 // finds inverse poisson given uniform distribution between 0 and 1
 float poissonInterval(float rateParameter) {
   float p = -log(1.0f - randf()) / rateParameter;
-  // Serial.print(" interval: ");
-  // Serial.println(p);
-    return p;
+  return p;
 }
+
+// ******************************************************************
+// ******************************************************************
 
 void setup() {
   //pinMode(buttonPin, INPUT); // where will I get the button pin values from? probaly the hardware.h
@@ -64,6 +137,8 @@ void setup() {
 
   FastLED.addLeds<CHIPSET, DATA_PIN, CLOCK_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalSMD5050 );
   FastLED.setBrightness( brightness );
+
+  initFireflies(ff); //initialize all firefly objects
 
   Serial.begin(9600);
   while (!Serial) {
@@ -89,10 +164,12 @@ static void delayToSyncFrameRate( uint8_t framesPerSecond) {
 
 void loop() {
 
-  // how can i change to reduce by time?
+  updateFireflies();
+
+  // REMOVE THIS LINE and get the decay rate accurate!!!
   leds.fadeToBlackBy(50); // reduce by percent of prior value
 
-  updateFireflies();
+  // updatePixels();
   
   FastLED.show();
   delayToSyncFrameRate(FPS);
@@ -102,25 +179,17 @@ void loop() {
 static float eventInterval = poissonInterval(RATE);
 //uint8_t values[NUM_LEDS] = {255}; // use this to apply a palette, which we aren't doing yet
 
-void updateFireflies() {
+void updatePixels() {
   static long int lastt = millis();
   int dt = millis() - lastt;
   if (dt > eventInterval * 1000) {
     lastt = millis();
     // leds[random8(NUM_LEDS)] = CRGB::Yellow;
-    leds[random8(NUM_LEDS)].setHSV(random8(10, 100), 255, 255);
+    leds[random8(NUM_LEDS)].setHSV(random8(10, 80), 255, 255);
     eventInterval = poissonInterval(RATE);
   }
 }
 
-/*
-// to update interval
-// you’d need to keep the “full” value of the pixel stored somewhere (so that you aren’t
-//  unscaling to try to get the scaling right for any given frame) - and for a given pixel, 
-//  record a start time (when it was full) and end time (when it should be black) - then you
-//  can get the total time and elapsed time for a given pixel - (256 * elapsed/total) gives
-//   you a value to use for fadeToBlackBy against the full value of the pixel.
-*/
 
 
 

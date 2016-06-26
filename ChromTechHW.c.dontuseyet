@@ -1,0 +1,36 @@
+
+#include "Arduino.h"
+#include "FastLED.h"
+
+const int potpin = 0; //add potentiometer for dimmer
+const int buttonPin = 3; //pin number for the button
+const int numLevels = 4; //number of levels we toggle through
+
+
+int levelState = 0; //state of the button level
+int buttonState;
+int lastButtonState = LOW; //previous read from buttin input
+
+long lastDebounceTime = 0; //last time the output pin was toggled
+long debounceDelay = 50;   // the debounce time; increase of output flickers
+
+
+void readDial() {
+  int val = analogRead(potpin);
+  val = map(val, 0, 1023, 0, 255);
+  // the FastLED call isn't being read below, since structure doesnt exist
+  // request for member 'setBrightness' in something not a structure or union
+  // FastLED.setBrightness( brightness );
+}
+
+int debounceButtonState() {
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis(); //reset the debmouncing timer
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // whatever the reading is at, it's been there for longer than the bounce delay, so use that
+    levelState = (levelState + 1) % numLevels;
+  }
+  lastButtonState = reading; //save the reading for the next loop
+}
