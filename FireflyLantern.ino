@@ -20,17 +20,14 @@ CRGBPalette16 gPal;
 int brightness = 255;
 
 #define NFF 5  // number of fireflies
-float RATE = 1.5;  // average interval between events per second
+float RATE = 5;  // average number events per second; cant go below 1!
 
 //Firefly firefly[NFF];
-
-int randInterval(int rate) {
-  return random8(rate - 10, rate + 10);
-}
 
 // return float between 0 and 1, innclusive
 float randf() {
   return (float)random(RAND_MAX) / (float)RAND_MAX;
+  // return (float) random() / (RAND_MAX + 1); //causes overflow??
 }
 
 // poisson random interval
@@ -43,27 +40,39 @@ float randf() {
 // taken from Donald Kknuth
 // http:#en.wikipedia.org/wiki/Poisson_distribution#Generating_Poisson-distributed_random_variables
 // this method is good for short rate values (< 30)
-int poissonInterval(float rate) {
-  double L = exp(-rate); // lambda, rate in exp
-  Serial.print("rate: ");
-  Serial.println(rate);
-  Serial.print("exp rate: ");
-  Serial.println(L);
-  double p = 1;
-int k = 0;
-  while (p > L) {
-    k++;
-    float f = randf();
-    Serial.print(f);
-    Serial.print(" ");
-    p *= f; // scale 1 by [0,1] until it is higher than threshold lambda
-    Serial.println(p);
-  }
-  Serial.println(k-1);
-  return k-1; // give the integer of how long it took to cross threshold
+// int poissonInterval(float rate) {
+//   double L = exp(-rate); // lambda, rate in exp
+//   // Serial.print("rate: ");
+//   // Serial.println(rate);
+//   // Serial.print("exp rate: ");
+//   // Serial.println(L);
+//   double p = 1;
+//   int k = 0;
+//   while (p > L) {
+//     k++;
+//     float f = randf();
+//     p *= f; // scale 1 by [0,1] until it is higher than threshold lambda
+//     // Serial.print(f);
+//     // Serial.print(" ");
+//     // Serial.println(p);
+//   }  
+//   Serial.print("interval: ");
+//   Serial.println(k-1);
+//   return k-1; // give the integer of how long it took to cross threshold
+// }
+
+
+// poisson random interval
+// returns float with next interval with mean rate of rateParameter per second
+// 
+// from this method: http://preshing.com/20111007/how-to-generate-random-timings-for-a-poisson-process/
+// finds inverse poisson given uniform distribution between 0 and 1
+float poissonInterval(float rateParameter) {
+  float p = -log(1.0f - randf()) / rateParameter;
+  // Serial.print(" interval: ");
+  // Serial.println(p);
+    return p;
 }
-
-
 
 void setup() {
   //pinMode(buttonPin, INPUT); // where will I get the button pin values from? probaly the hardware.h
@@ -78,58 +87,51 @@ void setup() {
     ; // wait for serial port to connect. Needed for native USB port only
   }
   Serial.println("loaded");
-  Serial.println(RAND_MAX);
+  Serial.println("------");
 }
 
+// delayToSyncFrameRate - delay how many milliseconds are needed
+//   to maintain a stable frame rate.
+static void delayToSyncFrameRate( uint8_t framesPerSecond) {
+  static uint32_t msprev = 0;
+  uint32_t mscur = millis();
+  uint16_t msdelta = mscur - msprev;
+  uint16_t mstargetdelta = 1000 / framesPerSecond;
+  if ( msdelta < mstargetdelta) {
+    FastLED.delay( mstargetdelta - msdelta);
+  }
+  msprev = mscur;
+}
 
+static float eventInterval = poissonInterval(RATE);
 
 void loop() {
-  // static int blinkRate = 0.5 * 1000;  // blinks per second
-   static int eventInterval = 0;
-   eventInterval = poissonInterval(RATE) * 1000; // get delay in millis
 
   // how can i change to reduce by time?
   leds.fadeToBlackBy(50); // reduce by percent of prior value
 
   static long int lastt = millis();
   int dt = millis() - lastt;
-  if (dt > eventInterval) {
+  // Serial.print("frame time: ");
+  // Serial.print(dt);
+  // Serial.print(" interval: ");
+  // Serial.println(eventInterval);
+
+  if (dt > eventInterval * 1000) {
     lastt = millis();
     leds[random8(NUM_LEDS)] = CRGB::Yellow;
     // leds[random8(NUM_LEDS)].setHSV(random8(), 255, 255);
+    eventInterval = poissonInterval(RATE);
+    // Serial.print("interval: ");
+    // Serial.println(eventInterval);
   }
   
   FastLED.show();
-  Serial.println(".");
   delayToSyncFrameRate(FPS);
 
 
 
 }
-
-/*
-void loop() {
-
-  // firefly objects decay by given rate
-  // leds.fadeToBlackBy(40);
-
-  // leds[3] = CRGB::Blue;
-  leds[3].setHSV( random8(), 255, 255);
-
-  // for (int i=0; i<NUM_LEDS; i++)
-  //   leds[i] = CRGB::Blue;
-
-  // updateFireflies(); // update the frame
-
-  static int eventInterval = poissonInterval(RATE) * 1e3; // get delay in millis
-  static uint64_t lastt = millis();
-  Serial.println((int)lastt);
-
-  FastLED.show();
-  delayToSyncFrameRate(FPS);
-
-}
-*/
 
 
 /*
@@ -156,18 +158,9 @@ void updateFireflies() {
 }
 */
 
-// delayToSyncFrameRate - delay how many milliseconds are needed
-//   to maintain a stable frame rate.
-static void delayToSyncFrameRate( uint8_t framesPerSecond) {
-  static uint32_t msprev = 0;
-  uint32_t mscur = millis();
-  uint16_t msdelta = mscur - msprev;
-  uint16_t mstargetdelta = 1000 / framesPerSecond;
-  if ( msdelta < mstargetdelta) {
-    FastLED.delay( mstargetdelta - msdelta);
-  }
-  msprev = mscur;
-}
+
+
+
 
 
 /*
@@ -210,3 +203,11 @@ static void delayToSyncFrameRate( uint8_t framesPerSecond) {
   }
 */
 
+/*
+// to update interval
+// you’d need to keep the “full” value of the pixel stored somewhere (so that you aren’t
+//  unscaling to try to get the scaling right for any given frame) - and for a given pixel, 
+//  record a start time (when it was full) and end time (when it should be black) - then you
+//  can get the total time and elapsed time for a given pixel - (256 * elapsed/total) gives
+//   you a value to use for fadeToBlackBy against the full value of the pixel.
+*/
