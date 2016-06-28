@@ -4,12 +4,12 @@
 #define DATA_PIN   11 // SPI MOSI pin
 #define CLOCK_PIN  13 //13 //SPI  SCK
 
-//#define COLOR_ORDER BGR  // most of the 10mm black APA102
-#define COLOR_ORDER GBR //mike's short test strip, 19 pixels
+#define COLOR_ORDER BGR  // most of the 10mm black APA102 / Ray Wu
+// #define COLOR_ORDER GBR //mike's short test strip, 19 pixels
 
 #define CHIPSET     APA102
 #define FPS 100
-#define NUM_LEDS    19
+#define NUM_LEDS    60
 
 CRGBArray<NUM_LEDS> leds;
 
@@ -17,13 +17,18 @@ CRGBPalette16 currentPalette;
 
 int brightness = 255;
 
-#define NFF 10  // number of fireflies
-float RATE = 1;  // average number events per second
+#define NFF 20  // number of fireflies
+float POISSON_RATE = 0.3;  // average number events per second
+// float POISSON_RATE = 1;  // average number events per second
+int HUE_START = 10;
+int HUE_END = 65;
+
 
 // ******************************************************************
 // create Firefly objects
 
-#define INIT_DURATION 400
+#define INIT_RISETIME 0  // left as parameters to eventually add noise to them
+#define INIT_FALLTIME 1000
 #define INIT_HUE 55 // of 256, yellowish
 #define INIT_SATURATION 255  // of 256
 #define INIT_BRIGHT 255  // of 256, mid level brightness
@@ -33,11 +38,12 @@ typedef struct Firefly {
   uint8_t hue;
   uint8_t sat;
   uint8_t bright;
-  uint8_t fullbright;
-  long int starttime; // in ms
+  uint8_t maxbright;
+  long int starttime; // in ms, what time we start the process of an "event" following an interval
   int interval;  // poisson interval betweeen events, random process
   int elapsedt;  // time since starttime
-  int duration; // time to decay to black, in ms
+  int risetime;
+  int falltime; // time to decay to black, in ms
 } Firefly;
 
 Firefly ff[NFF];
@@ -46,14 +52,15 @@ Firefly ff[NFF];
 void initFireflies(Firefly *f) {
   for(int i=0; i < NFF; i++) {
     f[i].index = random16(NUM_LEDS); // choose which pixel to start at
-    f[i].fullbright = INIT_BRIGHT;
+    f[i].maxbright = INIT_BRIGHT;
     f[i].bright = 0;
     f[i].hue = INIT_HUE;
     f[i].sat = INIT_SATURATION;
-    f[i].starttime = millis();
-    f[i].interval = poissonInterval(RATE) * 1000;
+    f[i].starttime = millis();  // record the time that we trigger the start of an interval
+    f[i].interval = poissonInterval(POISSON_RATE) * 1000;  // how long to wait until the next event
     f[i].elapsedt = 0;
-    f[i].duration = INIT_DURATION;
+    f[i].risetime = INIT_RISETIME;
+    f[i].falltime = INIT_FALLTIME;
   }
 }
 
@@ -64,25 +71,37 @@ void updateFireflies() {
       printFFState(ff[i]);
 
       // set initial state on trigger 
-      ff[i].hue = random16(10, 80);
-      leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].fullbright);
+      ff[i].hue = random16(HUE_START, HUE_END);
+      leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].maxbright);
 
       // reset values for the next start
-      ff[i].bright = ff[i].fullbright;
-      ff[i].interval = poissonInterval(RATE) * 1000;
+      ff[i].bright = ff[i].maxbright;
+      ff[i].interval = poissonInterval(POISSON_RATE) * 1000;
       ff[i].elapsedt = 0;
       ff[i].starttime = millis();
     }
-    else if ( ff[i].elapsedt > ff[i].duration) {
+    else if ( ff[i].elapsedt > (ff[i].falltime + ff[i].risetime)) { //(ff[i].bright == 0) { //
+      // the wave collapsed, set a new pixel for the firefly
       ff[i].index = random16(NUM_LEDS);
-      ff[i].interval = poissonInterval(RATE) * 1000;
+      ff[i].interval = poissonInterval(POISSON_RATE) * 1000;
       ff[i].elapsedt = 0;
       ff[i].starttime = millis();
     }
+    // else if (ff[i].elapsedt > ff[i].risetime)
     else {
+      //decay
       ff[i].elapsedt = millis() - ff[i].starttime;
+      printFFState(ff[i]);
 
-      leds[ff[i].index].fadeToBlackBy(256 * (ff[i].elapsedt / ff[i].duration) );
+      // float m = -ff[i].maxbright / ff[i].falltime;
+      // ff[i].bright = ff[i].elapsedt * m + ff[i].maxbright;
+      // uint8_t m =  ff[i].maxbright * (uint8_t)(ff[i].elapsedt / ff[i].falltime);
+      // Serial.println(m);
+      // ff[i].bright -= m;
+      // leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].bright);
+      // // leds[ff[i].index] =  - (ff[i].maxbright / ff[i].falltime) * (ff[i].elapsedt-ff[i].risetime) + ff[i].maxbright;
+      // leds[ff[i].index].fadeToBlackBy(ff[i].maxbright * (uint8_t)(ff[i].elapsedt / ff[i].falltime));
+      leds[ff[i].index].fadeToBlackBy(26);
     }
 
 
@@ -104,6 +123,8 @@ void printFFState(Firefly f) {
   Serial.print(f.interval);
   Serial.print(" dt: ");
   Serial.print(f.elapsedt);
+  Serial.print(" v: ");
+  Serial.print(f.bright);
   Serial.print("\n");
 
 }
@@ -167,7 +188,7 @@ void loop() {
   updateFireflies();
 
   // REMOVE THIS LINE and get the decay rate accurate!!!
-  leds.fadeToBlackBy(50); // reduce by percent of prior value
+  // leds.fadeToBlackBy(10); // reduce by percent of prior value
 
   // updatePixels();
   
@@ -175,51 +196,3 @@ void loop() {
   delayToSyncFrameRate(FPS);
 
 }
-
-static float eventInterval = poissonInterval(RATE);
-//uint8_t values[NUM_LEDS] = {255}; // use this to apply a palette, which we aren't doing yet
-
-void updatePixels() {
-  static long int lastt = millis();
-  int dt = millis() - lastt;
-  if (dt > eventInterval * 1000) {
-    lastt = millis();
-    // leds[random8(NUM_LEDS)] = CRGB::Yellow;
-    leds[random8(NUM_LEDS)].setHSV(random8(10, 80), 255, 255);
-    eventInterval = poissonInterval(RATE);
-  }
-}
-
-
-
-
-
-
-
-
-/*
-  void initFirefly(Firefly* f) {
-    f->index = 0;
-    f->risetime = INIT_RISETIME;
-    f->falltime = INIT_FALLTIME;
-    f->color = CRGB::Yellow;
-    return;
-  }
-
-  void setFireflyParams(Firefly* f, int index, int risetime, int falltime, uint8_t maxBrightness) {
-    f->index = index;
-    f->risetime = risetime;
-    f->falltime = falltime;
-    f->maxBrightness = maxBrightness;
-    return;
-  }
-
-  void selectFirefly() {
-  int i = random8(NUM_LEDS);
-  firefly[0].index = i;
-  firefly[0].color = CRGB::Yellow;
-
-  }
-
-*/
-
