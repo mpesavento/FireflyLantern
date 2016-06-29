@@ -17,7 +17,7 @@ CRGBPalette16 currentPalette;
 
 int brightness = 255;
 
-#define NFF 20  // number of fireflies
+#define NFF 15  // number of fireflies
 float POISSON_RATE = 0.3;  // average number events per second
 // float POISSON_RATE = 1;  // average number events per second
 int HUE_START = 10;
@@ -67,7 +67,7 @@ void initFireflies(Firefly *f) {
 void updateFireflies() {
   for(int i=0; i<NFF; i++) {
     // light the pixel if we've reached the interval
-    if (ff[i].elapsedt > ff[i].interval) {
+    if (ff[i].elapsedt > ff[i].interval && ff[i].bright == 0) {
       printFFState(ff[i]);
 
       // set initial state on trigger 
@@ -80,7 +80,7 @@ void updateFireflies() {
       ff[i].elapsedt = 0;
       ff[i].starttime = millis();
     }
-    else if ( ff[i].elapsedt > (ff[i].falltime + ff[i].risetime)) { //(ff[i].bright == 0) { //
+    else if  ( ff[i].elapsedt > (ff[i].falltime + ff[i].risetime)) { // (ff[i].bright == 0) { //
       // the wave collapsed, set a new pixel for the firefly
       ff[i].index = random16(NUM_LEDS);
       ff[i].interval = poissonInterval(POISSON_RATE) * 1000;
@@ -95,13 +95,20 @@ void updateFireflies() {
 
       // float m = -ff[i].maxbright / ff[i].falltime;
       // ff[i].bright = ff[i].elapsedt * m + ff[i].maxbright;
-      // uint8_t m =  ff[i].maxbright * (uint8_t)(ff[i].elapsedt / ff[i].falltime);
-      // Serial.println(m);
-      // ff[i].bright -= m;
-      // leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].bright);
+      if (ff[i].elapsedt > ff[i].falltime + ff[i].risetime) {
+        ff[i].bright = 0;
+      }
+      else {
+        uint8_t m =  (uint8_t)( ((long int)ff[i].maxbright * (long int)ff[i].elapsedt) / (long int)ff[i].falltime);
+       
+        Serial.println(m);
+        ff[i].bright = ff[i].maxbright - m;
+        ff[i].bright = scale8(ff[i].bright,ff[i].bright); // scale by self for more of a gamma curve
+      }
+      leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].bright);
       // // leds[ff[i].index] =  - (ff[i].maxbright / ff[i].falltime) * (ff[i].elapsedt-ff[i].risetime) + ff[i].maxbright;
       // leds[ff[i].index].fadeToBlackBy(ff[i].maxbright * (uint8_t)(ff[i].elapsedt / ff[i].falltime));
-      leds[ff[i].index].fadeToBlackBy(26);
+      // leds[ff[i].index].fadeToBlackBy(26);
     }
 
 
@@ -161,12 +168,12 @@ void setup() {
 
   initFireflies(ff); //initialize all firefly objects
 
-  Serial.begin(9600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-  Serial.println("loaded");
-  Serial.println("------");
+  // Serial.begin(9600);
+  // while (!Serial) {
+  //   ; // wait for serial port to connect. Needed for native USB port only
+  // }
+  // Serial.println("loaded");
+  // Serial.println("------");
 }
 
 // delayToSyncFrameRate - delay how many milliseconds are needed
@@ -193,6 +200,6 @@ void loop() {
   // updatePixels();
   
   FastLED.show();
-  delayToSyncFrameRate(FPS);
+  //delayToSyncFrameRate(FPS);
 
 }
