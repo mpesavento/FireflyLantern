@@ -82,15 +82,15 @@ void updateFireflies() {
 
       }
       else {
-        // do nothing        
+        // do nothing, cause already off and waiting for event at interval        
       }
     }
     else if (ff[i].state == 1) {
       if (ff[i].elapsedt > ff[i].risetime) {
         ff[i].state = 2;  // switch state to decay
         ff[i].bright = MAX_BRIGHT;
-        Serial.print("max: ");
-        Serial.println(ff[i].bright);
+        // Serial.print("max: ");
+        // Serial.println(ff[i].bright);
 
       }
       else {
@@ -114,14 +114,11 @@ void updateFireflies() {
       }
       else {
         uint8_t m = (uint8_t)( ((long int)MAX_BRIGHT * (long int)ff[i].elapsedt) / ((long int)ff[i].falltime + (long int)ff[i].risetime));
-        Serial.print("m: ");
-        Serial.println(m);
-
         ff[i].bright = MAX_BRIGHT - m;
         Serial.print("d: ");
         Serial.println(ff[i].bright);
 
-        //ff[i].bright = scale8(ff[i].bright,ff[i].bright); // scale by self for more of a gamma curve
+        ff[i].bright = scale8(ff[i].bright,ff[i].bright); // scale by self for more of a gamma curve
       }
     }
     leds[ff[i].index].setHSV(ff[i].hue, ff[i].sat, ff[i].bright);
@@ -191,8 +188,8 @@ static void delayToSyncFrameRate( uint8_t framesPerSecond) {
   uint32_t mscur = millis();
   uint16_t msdelta = mscur - msprev;
   uint16_t mstargetdelta = 1000 / framesPerSecond;
-  Serial.print("frame dt: ");
-  Serial.println(msdelta);
+  // Serial.print("frame dt: ");
+  // Serial.println(msdelta);
   if ( msdelta < mstargetdelta) {
     FastLED.delay( mstargetdelta - msdelta);
   }
