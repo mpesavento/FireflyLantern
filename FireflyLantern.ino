@@ -17,8 +17,8 @@ CRGBPalette16 currentPalette;
 
 int brightness = 255;
 
-#define NFF 15  // number of fireflies
-float POISSON_RATE = 0.3;  // average number events per second
+#define NFF (NUM_LEDS / 3)  // number of fireflies
+float POISSON_RATE = 0.4;  // average number events per second
 // float POISSON_RATE = 0.5;  // average number events per second
 int HUE_START = 10;
 int HUE_END = 65;
